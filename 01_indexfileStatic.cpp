@@ -337,7 +337,7 @@ public:
         if (result == "Overflow Block"
             || (result.rfind("Block", 0) == 0)) // If the record was added successfully
         {
-            std::cout << "Key " << key << " added successfully in " << result << std::endl;
+            std::cout << "\tKey " << key << " added successfully in " << result << std::endl;
             
             // It only updates the index if it was inserted in a main block
             if (result.rfind("Block", 0) == 0)
@@ -358,7 +358,7 @@ public:
         }
         else
         {
-            std::cout << "Error adding key " << key << " => (" << result << ")" << std::endl;
+            std::cout << "\tError adding key " << key << " => (" << result << ")" << std::endl;
         }
     }
 
@@ -368,7 +368,7 @@ public:
 
         if (indexBlock < 0 || indexBlock >= m_DataArea.getUsedBlocks())
         {
-            std::cout << "Record with key " << key << " not found (invalid block)." << std::endl;
+            std::cout << "\tRecord with key " << key << " not found (invalid block)." << std::endl;
             return;
         }
 
@@ -383,7 +383,7 @@ public:
         {
             if (records[i].getKey() == key)
             {
-                std::cout << "Record found (Block " << indexBlock << "): "
+                std::cout << "\tRecord found (Block " << indexBlock << "): "
                           << "key = " << records[i].getKey() << ", value = " << records[i].getValue() 
                           << ", dir = " << records[i].getDirection() << std::endl;
                 return;
@@ -401,7 +401,7 @@ public:
         {
             if (over_records[i].getKey() == key)
             {
-                std::cout << "Record found in the Overflow Area: "
+                std::cout << "\tRecord found in the Overflow Area: "
                           << "key = " << over_records[i].getKey() << ", value = " << over_records[i].getValue() 
                           << ", dir = " << over_records[i].getDirection() << std::endl;
                 return;
@@ -409,12 +409,13 @@ public:
         }
 
         // If the record is not in the overflow area either
-        std::cout << "Record with key " << key << " not found." << std::endl;
+        std::cout << "\tRecord with key " << key << " not found." << std::endl;
     }
 
     void Show()
     {
-        std::cout << "\n--- Index Area ---" << std::endl;
+        std::cout << "\n\t------------------------------------------" << std::endl;
+        std::cout << "\n\t\t~~~ Index Area ~~~ \n" << std::endl;
 
         std::pair<int, int>* m_Pair = m_IndexArea.getKeyDir();
 
@@ -422,7 +423,7 @@ public:
 
         for (int i = 0; i < index; i++)
         {
-            std::cout << "Key: " << m_Pair[i].first << " => Dir: " << (m_Pair[i].second * N) << std::endl;
+            std::cout << "\t\t[~] Key: " << m_Pair[i].first << " => Dir: " << (m_Pair[i].second * N) << std::endl;
         }
 
         ShowDataArea();
@@ -430,47 +431,103 @@ public:
 
     void ShowDataArea()
     {
-        std::cout << "\n--- Data Area ---" << std::endl;
+        std::cout << "\n\t\t-----------------" << std::endl;
+        std::cout << "\n\t\t~~~ Data Area ~~~ \n" << std::endl;
 
         Block<T, N>* blocks = m_DataArea.getBlocks();
 
-        int used = m_DataArea.getUsedBlocks();
-
         // Show all the blocks in the Main Area
 
-        for (int i = 0; i < used; i++)
+        for (int i = 0; i < BLOCKS; i++)
         {
-            std::cout << "Block: " << i << std::endl;
+            std::cout << "\t\tBlock: " << i << std::endl;
 
             // Get the current block
             Block<T, N>& c_Block = blocks[i];
 
             Record<T>* records = c_Block.getRecords();
 
-            int c_Size = c_Block.getSize();
-
-            for (int j = 0; j < c_Size; j++)
+            std::cout << "\t------------------------------------------" << std::endl;
+            for (int j = 0; j < N; j++)
             {
                 std::cout << "\t~ Key: " << records[j].getKey() << " => Value: " << records[j].getValue() << " => Direction: " << records[j].getDirection() << std::endl;
             }
+            std::cout << "\t------------------------------------------" << std::endl;
         }
 
         // Show the Overflow Area
 
-        std::cout << "\n\t[Overflow Area]" << std::endl;
+        std::cout << "\n\t\t[Overflow Area] \n" << std::endl;
 
         Block<T, OMAX>& m_Over = m_DataArea.getOverflow();
 
         Record<T>* over_records = m_Over.getRecords();
 
-        int over_size = m_Over.getSize();
-
-        for (int i = 0; i < over_size; i++)
+        for (int i = 0; i < OMAX; i++)
         {
             std::cout << "\t~ Key: " << over_records[i].getKey() << " => Value: " << over_records[i].getValue() << " => Direction: " << over_records[i].getDirection() << std::endl;
         }
+        std::cout << "\n\t------------------------------------------" << std::endl;
     }
 };
+
+// -------------------------------------------------------------
+// ----------------- Menu Function -----------------------------
+// -------------------------------------------------------------
+
+void Menu()
+{
+    Manager<std::string> m_Archive;
+
+    while (true)
+    {
+        std::cout << "\n\t ----------- Menu ----------- " << std::endl; 
+
+        std::cout << "\n\t[1] Add a record" << std::endl;
+        std::cout << "\t[2] Search a record" << std::endl;
+        std::cout << "\t[3] Show index/data area" << std::endl;
+        std::cout << "\t[4] Exit" << std::endl;
+
+
+        int choice;
+
+        int key;
+
+        std::string value;
+
+        std::cout << "\n\t[~] Enter your choice:  ";
+        std::cin >> choice;
+
+        switch (choice)
+        {
+        case 1:
+            std::cout << "\n\t[~] Enter the key:  ";
+            std::cin >> key;
+
+            std::cout << "\n\t[~] Enter the value:  ";
+            std::cin >> value;
+
+            m_Archive.Add(key, value);
+            break;
+        case 2:
+            std::cout << "\n\t[~] Enter the key:  ";
+            std::cin >> key;
+
+            m_Archive.Search(key);
+            break;
+        case 3:
+            m_Archive.Show();
+            break;
+        case 4:
+            return;
+            break;
+        default:
+            std::cout << "\n\tInvalid choice.\n" << std::endl;
+            break;
+        }
+        
+    }
+}
 
 // -------------------------------------------------------------
 // ----------------- Main Function -----------------------------
@@ -479,47 +536,51 @@ public:
 int main()
 {
 
-    Manager<std::string> m_Archive;
+    Menu();
 
-    // Block (0) first
-    m_Archive.Add(1, "Value 10");
-    m_Archive.Add(3, "Value 12");
-    m_Archive.Add(4, "Value 16");
+    // Test code (if you don't want to use the menu)
 
-    // Block (1) second
-    m_Archive.Add(2, "Value 14");
-    m_Archive.Add(6, "Value 18");
-    m_Archive.Add(8, "Value 20");
+    // Manager<std::string> m_Archive;
 
-    // Block (2) third
-    m_Archive.Add(5, "Value 19");
-    m_Archive.Add(10, "Value 21");
-    m_Archive.Add(9, "Value 22");
+    // // Block (0) first
+    // m_Archive.Add(1, "Value 10");
+    // m_Archive.Add(3, "Value 12");
+    // m_Archive.Add(4, "Value 16");
 
-    // Overflow Area
-    m_Archive.Add(13, "Valor 23");
+    // // Block (1) second
+    // m_Archive.Add(2, "Value 14");
+    // m_Archive.Add(6, "Value 18");
+    // m_Archive.Add(8, "Value 20");
 
-    // Overflow Area
-    m_Archive.Add(14, "Value 24");
+    // // Block (2) third
+    // m_Archive.Add(5, "Value 19");
+    // m_Archive.Add(10, "Value 21");
+    // m_Archive.Add(9, "Value 22");
 
-    // Search
+    // // Overflow Area
+    // m_Archive.Add(13, "Valor 23");
 
-    std::cout << "\nSearch tests: " << std::endl;
+    // // Overflow Area
+    // m_Archive.Add(14, "Value 24");
 
-    std::cout << "[~]\t";
-    m_Archive.Search(12);
-    std::cout << "[~]\t";
-    m_Archive.Search(13);
-    std::cout << "[~]\t";
-    m_Archive.Search(14);
+    // // Search
 
-    std::cout << "\nSearch an invalid key: " << std::endl;
+    // std::cout << "\nSearch tests: " << std::endl;
 
-    std::cout << "\n[~]\t";
-    m_Archive.Search(25);
+    // std::cout << "[~]\t";
+    // m_Archive.Search(12);
+    // std::cout << "[~]\t";
+    // m_Archive.Search(13);
+    // std::cout << "[~]\t";
+    // m_Archive.Search(14);
 
-    std::cout << "\nShowing the Index Area: " << std::endl;
-    m_Archive.Show();
+    // std::cout << "\nSearch an invalid key: " << std::endl;
+
+    // std::cout << "\n[~]\t";
+    // m_Archive.Search(25);
+
+    // std::cout << "\nShowing the Index Area: " << std::endl;
+    // m_Archive.Show();
 
     return 0;
 }
