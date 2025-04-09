@@ -1,14 +1,26 @@
+/*
+Integrantes:
+- Caminos Mariano
+- Famea Damian
+- Grigolato Facundo
+- Pettinato Valentin
+*/
+
 #include <iostream>
-#include <algorithm>
 #include <string>
+#include <algorithm>
 
-#define BLOCKS 3 // Number of blocks
-#define N 3 // Number of record per block
+#define MAX_BLOCKS 10 // Maximum number of blocks
+#define CAPACITY 10 // Number of records per block
+#define MAX_OVERFLOW 10 // Maximum number of records in the overflow area
+#define MAX_RECORDS 32 // Maximum number of records
 
-#define PMAX N*BLOCKS // Maximum number of records per Data Area on the index file
+int RECORDS = 9;
+int N = 3;
+int BLOCKS = RECORDS/N;
+int OMAX = 3;
 
-#define OVER (PMAX+1) // Index where the overflow block starts
-#define OMAX 3 // Limit of the overflow block
+int OVER = ((N * BLOCKS) + 1);
 
 // -------------------------------------------------------------
 // ----------------- Record Class ----------------------------
@@ -20,7 +32,7 @@ class Record
 private:
     int key;
     T value;
-	int direction; // direction to the record that has moved to the overflow area, or a new block
+	int direction;
 public:
 	Record(int key_, T value_) : key(key_), value(value_), direction(-1) {}
 
@@ -36,15 +48,19 @@ public:
 // ----------------- Block Class ---------------------------
 // -------------------------------------------------------------
 
-template <typename T, int CAPACITY>
+template <typename T>
 class Block
 {
 private:
     Record<T> records[CAPACITY];
 
     int m_Size;
+
+    int m_Capacity;
 public:
-    Block() : m_Size(0) {}
+    Block() : m_Size(0), m_Capacity(N) {}
+
+    void setCapacity(int cap) { m_Capacity = cap; } // Set the capacity of the block
 
     bool IsFull() { return (m_Size >= CAPACITY); } // Check if the block is full
 
@@ -52,16 +68,28 @@ public:
 
     int getSize() { return m_Size; } // Get the size of the block
 
+    void setSize(int size) { m_Size = size; } // Set the size of the block
+
     int AddRecord(const Record<T>& rec)
     {
         if (!IsFull())
         {
-            auto it = std::upper_bound(records, records + m_Size, rec, [](const auto& a, const auto& b)
+            int pos = -1;
+
+            // Search for the position to insert the record
+            for (int i = 0; i < m_Size; i++)
             {
-                return a.getKey() < b.getKey();
-            }); // Find the position to insert the record
-            
-            int pos = it - records; // Get the position of the iterator
+                if (records[i].getKey() > rec.getKey())
+                {
+                    pos = i;
+                    break;
+                }
+            }
+
+            if (pos == -1) // If the position is not found, insert at the end
+            {
+                pos = m_Size;
+            }
 
             // Move the records to the right to make space for the new record
             for (int i = m_Size; i > pos; i--)
@@ -69,8 +97,8 @@ public:
                 records[i] = records[i - 1];
             }
 
-            records[pos] = rec; // Insert the new record
-            m_Size++; // Increase the size of the block
+            records[pos] = rec;
+            m_Size++;
 
             return pos; // Return the position of the new record
         }
@@ -83,30 +111,36 @@ public:
 // ----------------- DataArea Class ---------------------------
 // -------------------------------------------------------------
 
-template <typename T, int CAPACITY, int MAX_BLOCKS, int CAP_OVERFLOW>
+template <typename T>
 class DataArea
 {
 private:
-    Block<T, CAPACITY> m_Blocks[MAX_BLOCKS]; // Array of blocks
-    Block<T, CAP_OVERFLOW> OverflowArea; // Overflow block
+    Block<T> m_Blocks[MAX_BLOCKS]; // Array of blocks
+    Block<T> OverflowArea; // Overflow block
     
     int usedBlocks; // Number of blocks used
 public:
     DataArea() : usedBlocks(0)
     {
+        for (int i = 0; i < BLOCKS; i++)
+        {
+            m_Blocks[i].setCapacity(N);
+        }
+        OverflowArea.setCapacity(OMAX);
+
         AddBlock(); // Add the first block
     }
 
     int getUsedBlocks() { return usedBlocks; } // Get the number of blocks used
 
-    Block<T, CAPACITY>* getBlocks() { return m_Blocks; } // Get all the blocks in the Data Area
+    Block<T>* getBlocks() { return m_Blocks; } // Get all the blocks in the Data Area
 
-    Block<T, CAP_OVERFLOW>& getOverflow() { return OverflowArea; } // Get the overflow block
+    Block<T>& getOverflow() { return OverflowArea; } // Get the overflow block
 
 	// Add a new record to the Data Area
 	int AddBlock()
 	{
-        if (usedBlocks < MAX_BLOCKS)
+        if (usedBlocks < BLOCKS)
         {
             return usedBlocks++; 
         }
@@ -121,52 +155,58 @@ public:
             return "Error: Invalid block\n";
         }
 
-        Block<T, CAPACITY>& actualBlock = m_Blocks[index]; // Get the actual block
+        Block<T>& actualBlock = m_Blocks[index]; // Get the actual block
 
-        // Check if the record is trying to be added at the end of the block
+        // - Check if the record is trying to be added at the end of the block -
 
-        // Get the actual size of the block
+        // (1) Get the actual size of the block
         int actualSize = actualBlock.getSize();
 
-        // Get the records to compare with the new one
+        // (2) Get the records to compare with the new one
         Record<T>* records = actualBlock.getRecords();
 
-        auto it = std::upper_bound(records, records + actualSize, rec, [](const auto& a, const auto& b)
+        // (3) Search for the position to insert the record
+        int pos = actualSize;
+
+        for (int i = 0; i < actualSize; i++)
         {
-            return a.getKey() < b.getKey();
-        }); // Find the position to insert the record
-
-        int pos = it - records; // Get the position of the iterator (it)
-
-        if (pos == actualSize 
-           && actualSize >= (CAPACITY + 1)/2) // If the block is full 
-        {
-            // Try to add a new block
-            int index2 = AddBlock();
-
-            if (index2 != -1)
+            if (records[i].getKey() > rec.getKey())
             {
-                Block<T, CAPACITY>& newBlock = m_Blocks[index2];
-                
-                int pos2 = newBlock.AddRecord(rec);
-                
-                if (pos2 < 0)
-                {
-                    return "Error: New block is full";
-                }
-
-                return "Block " + std::to_string(index2);
-            }
-            else // No more blocks can be added, so the record will be added to the overflow area
-            {
-                return AddOverflow(rec);
+                pos = i;
+                break;
             }
         }
-        else // If the block is not full
+
+        // (1) If the record is going to be inserted at the end of the block
+        if (pos == actualSize && actualSize < N)
         {
-            int pos = actualBlock.AddRecord(rec); // Get the position of the new record
-        
-            if (pos >= 0) // If the position is valid and the block is not full
+
+            // (1.1) If the block is not full we try to add a new block
+            if (actualSize >= (N + 1)/2)
+            {
+
+                int actualIndex = AddBlock(); 
+
+                // If it can create a new block, we add the record on the new block
+                if (actualIndex != -1)
+                {
+                    Block<T>& newBlock = m_Blocks[actualIndex];
+
+                    int pos2 = newBlock.AddRecord(rec);
+
+                    if (pos2 < 0)
+                    {
+                        return "Error: New block is full";
+                    }
+
+                    return "Block " + std::to_string(actualIndex);
+                }
+            }
+
+            // (1.2) If it can't create a new block, we add the record on the current block
+            int actualPos = actualBlock.AddRecord(rec);
+
+            if (actualPos >= 0)
             {
                 return "Block " + std::to_string(index);
             }
@@ -174,6 +214,28 @@ public:
             {
                 return "Error: Record not added";
             }
+        }
+        // (2) If the record is not going to be inserted at the end of the block and the block is almost full ((N + 1)/2) add the record to the overflow area
+        else if (pos != actualSize && actualSize >= (N + 1)/2)
+        {
+            if (actualSize > 0)
+            {
+                records[actualSize - 1].setDirection(OVER);
+            }
+
+            return AddOverflow(rec);
+        }
+
+        // (3) If the record is not going to be inserted at the end of the block and the block is not full, add the record to the block normally
+        int m_Pos = actualBlock.AddRecord(rec);
+        
+        if (m_Pos >= 0)
+        {
+            return "Block " + std::to_string(index);
+        }
+        else
+        {
+            return "Error: Record not added";
         }
     }
 
@@ -192,52 +254,45 @@ public:
             return "Error: Overflow is full, can't be added";
         }
         
-        // Update the direction of the previous record
-        UpdateDir(rec.getKey());
-
         return "Overflow Block";
     }
 
-    void UpdateDir(int key)
+    // Check if the key exists in the Data Area or Overflow Area
+    // This function is used to check if the key already exists before adding it
+    // to avoid duplicates, cause the key is a unique identifier for the record
+
+    bool CheckKey(int key)
     {
-        // I will search for the record previous to the new one
-
-        // Search for the record
-        Record<T>* m_Rec = FindRecord(key);
-
-        if (m_Rec != nullptr)
-        {
-            m_Rec->setDirection(OVER);
-        }
-
-    }
-
-    Record<T>* FindRecord(int key)
-    {
-        Record<T>* prevRec = nullptr;
-
-        // Search for the record that has the key greater than the new one
+        // Check if the key exists in the Data Area
         for (int i = 0; i < usedBlocks; i++)
         {
-            Block<T, CAPACITY>& block = m_Blocks[i];
+            Block<T>& block = m_Blocks[i];
             Record<T>* records = block.getRecords();
             int size = block.getSize();
 
             for (int j = 0; j < size; j++)
             {
-                if (records[j].getKey() < key)
+                if (records[j].getKey() == key)
                 {
-                    
-                    if (prevRec == nullptr 
-                        || records[j].getKey() > prevRec->getKey())
-                    {
-                        prevRec = &records[j]; // Update the previous record
-                    }
+                    return true;
                 }
             }
         }
 
-        return prevRec;
+        // Check if the key exists in the Overflow Area
+        Block<T>& overBlock = OverflowArea;
+        Record<T>* overRecords = overBlock.getRecords();
+        int overSize = overBlock.getSize();
+
+        for (int i = 0; i < overSize; i++)
+        {
+            if (overRecords[i].getKey() == key)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 };
 
@@ -245,17 +300,17 @@ public:
 // ----------------- IndexArea Class ---------------------------
 // -------------------------------------------------------------
 
-template <typename T, int BLOCK_COUNT>
+template <typename T>
 class IndexArea
 {
 private:
-    std::pair<int, int> key_dir[BLOCK_COUNT];
+    std::pair<int, int> key_dir[MAX_BLOCKS];
 
-    DataArea<T, N, BLOCKS, OMAX>* m_Area;
+    DataArea<T>* m_Area;
 
     int index;
 public:
-    IndexArea(DataArea<T, N, BLOCKS, OMAX>* area) : index(0), m_Area(area) {}
+    IndexArea(DataArea<T>* area) : index(0), m_Area(area) {}
 
     std::pair<int, int>* getKeyDir() { return key_dir; }
 
@@ -286,19 +341,38 @@ public:
     void UpdateIndex(int indexBlock, int key)
     {
         // Search for the indexBlock in the index (key_dir vector)
-        auto it = std::find_if(key_dir, key_dir + index, [indexBlock](auto& pair) { return pair.second == indexBlock; });
+        int pos = -1;
 
-        if (it != (key_dir + index)) // If the indexBlock is found
+        for (int i = 0; i < index; i++)
         {
-            it->first = key; // Update the key
-        }
-        else // If the indexBlock is not found
-        {
-            key_dir[index++] = { key, indexBlock }; // Add the new key and indexBlock
+            if (key_dir[i].second == indexBlock)
+            {
+                pos = i;
+                break;
+            }
         }
 
-        // Sort the index
-        std::sort(key_dir, key_dir + index, [](auto& a, auto& b) { return a.first < b.first; });
+        if (pos != -1) 
+        {
+            key_dir[pos].first = key;
+        }
+        else
+        {
+            key_dir[index++] = { key, indexBlock };
+        }
+
+        // Sort the index (key_dir vector) with bubble sort
+        for (int i = 0; i < index - 1; i++)
+        {
+            for (int j = 0; j < index - i - 1; j++)
+            {
+                if (key_dir[j].first > key_dir[j + 1].first)
+                {
+                    std::swap(key_dir[j], key_dir[j + 1]);
+                }
+            }
+        }
+
     }
 };
 
@@ -310,8 +384,8 @@ template<typename T>
 class Manager
 {
 private:
-    IndexArea<T, BLOCKS> m_IndexArea;
-    DataArea<T, N, BLOCKS, OMAX> m_DataArea;
+    IndexArea<T> m_IndexArea;
+    DataArea<T> m_DataArea;
 
 public:
 
@@ -326,6 +400,14 @@ public:
 
     void Add(int key, T value)
     {
+
+        // Check if the key exists
+        if (m_DataArea.CheckKey(key) == true)
+        {
+            std::cout << "\tKey " << key << " already exists." << std::endl;
+            return;
+        }
+
         Record<T> rec(key, value);
 
         // Get the index of the block
@@ -334,19 +416,21 @@ public:
         // Add the record to the Data Area
         std::string result = m_DataArea.AddRecordToData(indexBlock, rec);
 
+        std::string m_Result = result.substr(0, 6); // This is used to check if the result was "Block "
+
         if (result == "Overflow Block"
-            || (result.rfind("Block", 0) == 0)) // If the record was added successfully
+            || m_Result == "Block ")
         {
             std::cout << "\tKey " << key << " added successfully in " << result << std::endl;
             
             // It only updates the index if it was inserted in a main block
-            if (result.rfind("Block", 0) == 0)
+            if (m_Result == "Block ") // If the record was added in a main block
             {
-                int pos = result.find(" "); // Find the position of the space after "Block"
-                int index = std::stoi(result.substr(pos + 1)); // Get the index of the block
 
-                Block<T, N>* blocks = m_DataArea.getBlocks();
-                Block<T, N>& block = blocks[index];
+                int index = std::stoi(result.substr(6)); // Get the index of the block
+
+                Block<T>* blocks = m_DataArea.getBlocks();
+                Block<T>& block = blocks[index];
 
                 // Check if the block is not empty and update the index
                 if (block.getSize() > 0)
@@ -356,7 +440,7 @@ public:
                 }
             }
         }
-        else
+        else // If the record was not added successfully
         {
             std::cout << "\tError adding key " << key << " => (" << result << ")" << std::endl;
         }
@@ -373,7 +457,7 @@ public:
         }
 
         // Search in the main block
-        Block<T, N>& block = m_DataArea.getBlocks()[indexBlock];
+        Block<T>& block = m_DataArea.getBlocks()[indexBlock];
 
         Record<T>* records = block.getRecords();
 
@@ -391,7 +475,7 @@ public:
         }
 
         // If the record is not in the main block, search in the overflow area
-        Block<T, OMAX>& over = m_DataArea.getOverflow();
+        Block<T>& over = m_DataArea.getOverflow();
 
         Record<T>* over_records = over.getRecords();
 
@@ -434,7 +518,7 @@ public:
         std::cout << "\n\t\t-----------------" << std::endl;
         std::cout << "\n\t\t~~~ Data Area ~~~ \n" << std::endl;
 
-        Block<T, N>* blocks = m_DataArea.getBlocks();
+        Block<T>* blocks = m_DataArea.getBlocks();
 
         // Show all the blocks in the Main Area
 
@@ -443,7 +527,7 @@ public:
             std::cout << "\t\tBlock: " << i << std::endl;
 
             // Get the current block
-            Block<T, N>& c_Block = blocks[i];
+            Block<T>& c_Block = blocks[i];
 
             Record<T>* records = c_Block.getRecords();
 
@@ -459,7 +543,7 @@ public:
 
         std::cout << "\n\t\t[Overflow Area] \n" << std::endl;
 
-        Block<T, OMAX>& m_Over = m_DataArea.getOverflow();
+        Block<T>& m_Over = m_DataArea.getOverflow();
 
         Record<T>* over_records = m_Over.getRecords();
 
@@ -469,6 +553,8 @@ public:
         }
         std::cout << "\n\t------------------------------------------" << std::endl;
     }
+
+    
 };
 
 // -------------------------------------------------------------
@@ -507,6 +593,12 @@ void Menu()
             std::cout << "\n\t[~] Enter the value:  ";
             std::cin >> value;
 
+            if (key <= 0)
+            {
+                std::cout << "\n\tInvalid key.\n" << std::endl;
+                break;
+            }
+
             m_Archive.Add(key, value);
             break;
         case 2:
@@ -529,16 +621,106 @@ void Menu()
     }
 }
 
+void Init()
+{
+    while (true)
+    {
+        std::cout << "\n\t\t ------------------------------------------" << std::endl;
+        std::cout << "\n\t\t SETTINGS \n";
+        std::cout << "\n\t\t[1] Set the number of records per block (N)" << std::endl;
+        std::cout << "\n\t\t[2] Set the maximum number of records (RECORDS)" << std::endl;
+        std::cout << "\n\t\t[3] Set the maximum number of records for the overflow area (OMAX)" << std::endl;
+        std::cout << "\n\t\t[4] Keep default settings (N = 3, RECORDS = 9, OMAX = 3)" << std::endl;
+        std::cout << "\n\t\t[5] Exit" << std::endl;
+        std::cout << "\n\n\t\t ~~~~~ the max values for each parameter are * " << MAX_RECORDS << "(MAX_RECORDS) * " << CAPACITY << "(RECORDS_PER_BLOCK) * " << MAX_OVERFLOW << "(OVERFLOW_AREA) * " << std::endl;
+        std::cout << "\n\t\t ~~~~~ the maximum number of records might can be divided by the number of records per block (N) ~~~~~" << std::endl;
+
+        int choice;
+
+        std::cout << "\n\t\t[~] Enter your choice:  ";
+        std::cin >> choice;
+
+        std::cout << "\n\t\t ------------------------------------------" << std::endl;
+
+        switch (choice)
+        {
+            case 1:
+                std::cout << "\n\t\t[~] Enter the number of records per block:  ";
+                std::cin >> N;
+
+                if (N <= 0 || N > CAPACITY)
+                {
+                    std::cout << "\n\tInvalid number of records per block.\n" << std::endl;
+                    N = 3; 
+                    break;
+                }
+
+                std::cout << "\n\t\t[*] the new number of records per block is * " << N << " *" << std::endl;
+
+                break;
+
+            case 2:
+                std::cout << "\n\t\t[~] Enter the maximum number of records:  ";
+                std::cin >> RECORDS;
+
+                if (RECORDS <= 0 || RECORDS > MAX_RECORDS)
+                {
+                    std::cout << "\n\tInvalid maximum number of records.\n" << std::endl;
+                    RECORDS = 9; 
+                    break;
+                }
+
+                std::cout << "\n\t\t[*] the new maximum number of records is * " << RECORDS << " *" << std::endl;
+                break;
+
+            case 3:
+                std::cout << "\n\t\t[~] Enter the maximum number of records for the overflow area:  ";
+                std::cin >> OMAX;
+
+                if (OMAX <= 0)
+                {
+                    std::cout << "\n\tInvalid maximum number of records for the overflow area.\n" << std::endl;
+                    OMAX = 3; // Set to default value
+                    break;
+                }
+
+                std::cout << "\n\t\t[*] the new maximum number of records for the overflow area is * " << OMAX << " *" << std::endl;
+
+                break;
+
+            case 4:
+                std::cout << "\n\t\tKeep/set settings default (BLOCKS = 3, N = 3, OMAX = 3) :)\n" << std::endl;
+
+                return;
+
+                break;
+
+            case 5:
+                std::cout << "\n\t\tExiting...\n" << std::endl;
+
+                return;
+
+                break;
+
+            default:
+                std::cout << "\n\tInvalid choice.\n" << std::endl;
+
+                break;
+        }
+    }
+}
+
 // -------------------------------------------------------------
 // ----------------- Main Function -----------------------------
 // -------------------------------------------------------------
 
 int main()
 {
+    Init();
 
     Menu();
 
-    // Test code (if you don't want to use the menu)
+    //[*] Test code (if you don't want to use the menu and init function) [*]
 
     // Manager<std::string> m_Archive;
 
@@ -582,5 +764,5 @@ int main()
     // std::cout << "\nShowing the Index Area: " << std::endl;
     // m_Archive.Show();
 
-    return 0;
+    // std::cin.get();
 }
